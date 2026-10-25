@@ -1,0 +1,21 @@
+DEMO ONLY - fictional interview notes. No person was interviewed. Written for a Quorum product demonstration; not a recording, customer testimony or validated evidence. The presenter may store and process this authored sample as demo material.
+
+Participant alias: DEMO Agency A - owner of a four-person web-design agency
+Context: Invented walkthrough of a recent client change request. All events and quotations are fictional.
+
+Founder: Walk me through the last time a client requested something outside the original brief.
+Agency A: The client asked us to add a second language after the website layout was approved. The request was in WhatsApp, the original brief was in a Google Doc, and our estimate was in an email draft.
+
+Founder: What happened next?
+Agency A: We started part of the work before anyone approved the extra cost in writing. I eventually absorbed the extra work because I did not want an argument at delivery.
+
+Founder: What have you tried already?
+Agency A: We have a change-request template, but the team does not consistently use it. A simpler process inside our existing tools might be enough.
+
+Founder: How would asking clients to create an account affect this workflow?
+Agency A: I will not ask an existing client to create another account just to approve one change. I would send a clear approval link, but a separate login is a blocker for me.
+
+Founder: Who could approve a purchase?
+Agency A: I decide what the agency buys. I would need to try it on one live project before discussing a monthly subscription.
+
+Founder note: This fictional account raises a process-adoption question and contradicts the initial portal assumption for this participant. It does not establish how common the problem is, prove time savings, or represent a payment commitment.

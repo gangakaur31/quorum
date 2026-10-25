@@ -1,0 +1,21 @@
+DEMO ONLY - fictional interview notes. No person was interviewed. Written for a Quorum product demonstration; not customer testimony, a recording or proof of willingness to pay. The presenter may store and process this authored sample as demo material.
+
+Participant alias: DEMO Agency B - owner of a seven-person web-design agency
+Context: Invented conversation about recording client approvals. All events and quotations are fictional.
+
+Founder: Tell me about the last scope change you handled.
+Agency B: A client requested three extra product pages. Our project manager put the price in an email and saved the approval in the project folder before assigning the work.
+
+Founder: What is difficult about the current process?
+Agency B: The process works, but finding the approved version later is awkward because requests and approvals live in different places.
+
+Founder: What would make you consider a different approach?
+Agency B: I would want the original request, the additional cost and the approved version on one page. I do not need another full project-management tool.
+
+Founder: What would you need before trying it?
+Agency B: Show me one complete workflow with a real project manager and one client. INR 1,499 is a price I can evaluate, but I have not agreed to buy anything today.
+
+Founder: Who has purchasing authority?
+Agency B: I approve subscriptions, and the project manager would have to use the workflow consistently.
+
+Founder note: This fictional interview describes an existing alternative and conditional interest. It is not a signed agreement or observed purchase. The separate fictional pilot register illustrates what a later concrete commitment would look like.
