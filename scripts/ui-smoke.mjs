@@ -1,0 +1,92 @@
+import assert from "node:assert/strict";
+import { mkdir, writeFile } from "node:fs/promises";
+import { createRequire } from "node:module";
+import path from "node:path";
+const base = process.env.CHECK_URL || "http://localhost:3002";
+const tabs = await (await fetch((process.env.QUORUM_BROWSER_DEBUG_URL || "http://127.0.0.1:9222") + "/json/list")).json();
+const socket = new WebSocket(tabs.find(t => t.type === "page").webSocketDebuggerUrl);
+await new Promise(resolve => socket.addEventListener("open", resolve, { once: true }));
+let sequence = 0; const pending = new Map(), exceptions = [];
+socket.addEventListener("message", event => { const message = JSON.parse(event.data); if (message.id) { pending.get(message.id)?.(message); pending.delete(message.id); } if (message.method === "Runtime.exceptionThrown") exceptions.push(message.params.exceptionDetails.text); });
+const send = (method, params = {}) => new Promise((resolve, reject) => { const id = ++sequence; const timeout = setTimeout(() => reject(new Error(`CDP timeout: ${method}`)), 20000); pending.set(id, message => { clearTimeout(timeout); message.error ? reject(new Error(message.error.message)) : resolve(message.result); }); socket.send(JSON.stringify({ id, method, params })); });
+const evaluate = async expression => { const r = await send("Runtime.evaluate", { expression, awaitPromise: true, returnByValue: true }); if (r.exceptionDetails) throw new Error(r.exceptionDetails.text); return r.result.value; };
+const waitFor = async expression => { const started=Date.now(); while(Date.now()-started<15000) { try { if(await evaluate('Boolean('+expression+')')) return true; } catch(error) { if(!/context|Cannot find/i.test(error.message)) throw error; } await new Promise(resolve=>setTimeout(resolve,70)); } throw new Error('UI condition timed out: '+expression); };
+const click = text => evaluate(`Array.from(document.querySelectorAll('button')).find(b=>b.textContent.trim()===${JSON.stringify(text)})?.click()`);
+const fill = (name, value) => evaluate(`{const input=document.querySelector('[name="${name}"]');if(!input)throw new Error('Missing input ${name}');Object.getOwnPropertyDescriptor(input instanceof HTMLTextAreaElement?HTMLTextAreaElement.prototype:input instanceof HTMLSelectElement?HTMLSelectElement.prototype:HTMLInputElement.prototype,'value').set.call(input,${JSON.stringify(value)});input.dispatchEvent(new Event(input instanceof HTMLSelectElement?'change':'input',{bubbles:true}));}`);
+const screenshot = async name => { const result = await send("Page.captureScreenshot", { format: "png" }); await writeFile(`artifacts/${name}.png`, Buffer.from(result.data, "base64")); };
+await mkdir("artifacts", { recursive: true });
+let projectId, accessToken;
+try {
+  await send("Page.enable"); await send("Runtime.enable");
+  await send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 1000, deviceScaleFactor: 1, mobile: false });
+  await send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-reduced-motion", value: "reduce" }] });
+  await send("Page.navigate", { url: base });
+  await waitFor("document.querySelector('.hero-actions button') || document.querySelector('.terminal-panel')");
+  await click("Start your Quorum"); await waitFor("document.querySelector('.terminal-panel')");
+  // Use an isolated browser origin and server data directory; all records are internal QA.
+  await click("NEW PROJECT"); await click("/evidence"); await waitFor("document.querySelector('[name=claim]')");
+  await fill("claim", "INTERNAL UI TEST ONLY: a reported objection should yield ITERATE");
+  await evaluate("document.querySelector('[name=claim]').form.requestSubmit()");
+  await waitFor("document.querySelector('.hypothesis-line')?.textContent.includes('INTERNAL UI TEST ONLY')");
+  const identity = await evaluate("JSON.parse(localStorage.getItem('quorum-projects-v2')).find(p=>p.sessionId===localStorage.getItem('quorum-active-v2'))");
+  projectId = identity.sessionId; accessToken = identity.accessToken;
+  await evaluate("{const field=document.querySelector('[name=hypothesisId]');Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value').set.call(field,field.options[1].value);field.dispatchEvent(new Event('change',{bubbles:true}))}");
+  await fill("direction", "contradicts"); await fill("summary", "INTERNAL UI TEST ONLY: test observation, no real customer");
+  await fill("source", "Internal automated UI verification"); await fill("limitations", "Synthetic QA input. Not customer evidence. Deleted after this check.");
+  await evaluate("document.querySelector('[name=summary]').form.requestSubmit()");
+  await waitFor("document.querySelector('.evidence-entry h3')?.textContent.includes('INTERNAL UI TEST ONLY')");
+  await screenshot("evidence-desktop");
+  await click("/decision"); await waitFor("document.querySelector('.decision-result h2')?.textContent==='ITERATE'");
+  await click("Record this decision in history"); await waitFor("document.querySelector('.evidence-entry h3')?.textContent==='ITERATE'");
+  await screenshot("decision-desktop");
+  // Reload must recover server data and keep the terminal on the left.
+  await send("Page.reload"); await waitFor("document.querySelector('.hero-actions')"); await click("Start your Quorum"); await waitFor("document.querySelector('.terminal-panel')"); await evaluate(`{const select=document.querySelector('.app-nav select');select.value=${JSON.stringify(projectId)};select.dispatchEvent(new Event('change',{bubbles:true}))}`); await click("/evidence");
+  await waitFor("document.querySelector('.evidence-entry h3')?.textContent.includes('INTERNAL UI TEST ONLY')");
+  assert.equal(await evaluate("document.documentElement.scrollWidth<=innerWidth"), true);
+  await click("/discover"); await waitFor("document.querySelector('[name=domain]')"); await screenshot("discover-desktop");
+  await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
+  await click("Hide terminal");
+  await waitFor("document.querySelector('.terminal-panel')?.classList.contains('is-collapsed')");
+  assert.equal(await evaluate("document.querySelector('.terminal-panel').getBoundingClientRect().height<160"), true);
+  await screenshot("discover-mobile");
+  assert.equal(await evaluate("document.documentElement.scrollWidth<=innerWidth"), true);
+  assert.equal(await evaluate("getComputedStyle(document.querySelector('.workspace-content')).animationName"), "none");
+  let publicFormVerified = false;
+  if (process.env.QUORUM_UI_TEST_DATA_DIR) {
+    assert.equal(path.resolve(process.env.QUORUM_UI_TEST_DATA_DIR), path.resolve("artifacts/ui-test-data"), "Fixture writes are restricted to the isolated UI-test directory.");
+    process.env.QUORUM_DATA_DIR = process.env.QUORUM_UI_TEST_DATA_DIR;
+    delete process.env.KV_REST_API_URL; delete process.env.KV_REST_API_TOKEN;
+    const require = createRequire(import.meta.url); require("./test-register.cjs");
+    const store = require("../lib/context-store.ts");
+    // Explicit test fixture, never an AI response. No mock provider is added to the app.
+    await store.updateContext(projectId, { artifact: { title: "INTERNAL UI FIXTURE - NOT AI GENERATED", headline: "Internal test offer", keyClaims: ["Internal automated test only"], html: "<!doctype html><html><body><h1>INTERNAL UI TEST ONLY</h1><p>This static test fixture is not a customer offer or AI-generated result.</p></body></html>" } });
+    const context = await (await fetch(`${base}/api/session/${projectId}`, { headers: { Authorization: `Bearer ${accessToken}` } })).json();
+    const published = await fetch(`${base}/api/live`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ context: { sessionId: projectId, accessToken }, operation: "publish", publicationKey: crypto.randomUUID(), hypothesisId: context.context.hypotheses[0].id, title: "INTERNAL UI TEST ONLY", objective: "interview", disclosure: "Internal automated test. No customer data and no email delivery. All test records will be deleted immediately.", confirmPublic: true }) });
+    assert.equal(published.status, 200); const { publicId } = await published.json();
+    await send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 1000, deviceScaleFactor: 1, mobile: false });
+    await send("Emulation.setUserAgentOverride", { userAgent: "Mozilla/5.0 QuorumInternalUIVerification" });
+    await send("Page.navigate", { url: `${base}/live/${publicId}?utm_source=internal-ui-test` });
+    await waitFor("document.querySelector('[name=email]')");
+    assert.equal(await evaluate("document.querySelector('iframe').getAttribute('sandbox')"), "");
+    await click("Allow anonymous visit measurement"); await waitFor("document.body.textContent.includes('Consenting visit recorded')");
+    await fill("email", "internal-ui-test@example.invalid");
+    await evaluate("document.querySelector('[name=consent]').checked=true");
+    await new Promise(resolve => setTimeout(resolve, 2100));
+    await evaluate("document.querySelector('[name=email]').form.requestSubmit()");
+    await waitFor("document.body.textContent.includes('Your email was saved')");
+    await screenshot("live-offer-internal-test");
+    const statsResponse = await fetch(`${base}/api/live`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ context: { sessionId: projectId, accessToken }, operation: "stats", publicId }) });
+    const { stats } = await statsResponse.json();
+    assert.equal(stats.contacts, 1); assert.equal(stats.consentingVisits, 1); assert.equal(stats.matchedContacts, 1);
+    const closed = await fetch(`${base}/api/live`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ context: { sessionId: projectId, accessToken }, operation: "close", publicId }) });
+    assert.equal(closed.status, 200);
+    await send("Page.reload"); await waitFor("document.body.textContent.includes('closed or unavailable')");
+    publicFormVerified = true;
+  }
+  assert.deepEqual(exceptions, []);
+  console.log(JSON.stringify({ passed: true, publicFormVerified, checks: ["assumption creation", "evidence input", "evidence-aware decision", "decision history", "reload recovery", "desktop layout", "mobile overflow", "mobile terminal collapse", "reduced motion", "no browser exceptions"] }));
+} finally {
+  if (projectId && accessToken) await fetch(`${base}/api/session/${projectId}`, { method: "DELETE", headers: { Authorization: `Bearer ${accessToken}` } });
+  await evaluate("localStorage.removeItem('quorum-projects-v2');localStorage.removeItem('quorum-active-v2')").catch(() => {});
+  socket.close();
+}

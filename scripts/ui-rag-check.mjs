@@ -1,0 +1,75 @@
+// Local browser + real filesystem checks. Static internal notes, no claimed AI/customer evidence.
+import assert from 'node:assert/strict';
+import { mkdir, writeFile, unlink } from 'node:fs/promises';
+import path from 'node:path';
+import { createRequire } from 'node:module';
+const require = createRequire(import.meta.url), base = process.env.CHECK_URL || 'http://localhost:3002';
+assert.ok(['localhost', '127.0.0.1'].includes(new URL(base).hostname));
+const pages = await (await fetch('http://127.0.0.1:9222/json/list')).json();
+const socket = new WebSocket(pages.find(p => p.type === 'page').webSocketDebuggerUrl);
+await new Promise(resolve => socket.addEventListener('open', resolve, { once: true }));
+const fixture = await require('./ui-audit-fixture.cjs')().catch(error => { socket.close(); throw error; });
+let id = 0; const pending = new Map(), errors = [], checks = [], layouts = [];
+socket.addEventListener('message', event => { const m = JSON.parse(event.data); if (m.id) { pending.get(m.id)?.(m); pending.delete(m.id); } if (m.method === 'Runtime.exceptionThrown') errors.push(m.params.exceptionDetails.text); });
+const send = (method, params = {}) => new Promise((resolve, reject) => { const sequence = ++id, timer = setTimeout(() => reject(new Error(`CDP timeout: ${method}`)), 20000); pending.set(sequence, m => { clearTimeout(timer); m.error ? reject(new Error(m.error.message)) : resolve(m.result); }); socket.send(JSON.stringify({ id: sequence, method, params })); });
+const evaluate = async expression => { const r = await send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true }); if (r.exceptionDetails) throw new Error(r.exceptionDetails.exception?.description || r.exceptionDetails.text); return r.result.value; };
+const wait = expression => evaluate(`new Promise((resolve,reject)=>{const start=Date.now();const timer=setInterval(()=>{if(${expression}){clearInterval(timer);resolve(true)}else if(Date.now()-start>12000){clearInterval(timer);reject(new Error('Timed out: '+${JSON.stringify(expression)}))}},70)})`);
+const click = text => evaluate(`{const e=[...document.querySelectorAll('button')].find(e=>e.textContent.trim()===${JSON.stringify(text)});if(!e)throw new Error('Missing button '+${JSON.stringify(text)});e.click()}`);
+const type = (selector, value) => evaluate(`{const e=document.querySelector(${JSON.stringify(selector)});if(!e)throw new Error('Missing field');Object.getOwnPropertyDescriptor(e instanceof HTMLTextAreaElement?HTMLTextAreaElement.prototype:HTMLInputElement.prototype,'value').set.call(e,${JSON.stringify(value)});e.dispatchEvent(new Event('input',{bubbles:true}))}`);
+const choose = (selector, value) => evaluate(`{const e=document.querySelector(${JSON.stringify(selector)});Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value').set.call(e,${JSON.stringify(value)});e.dispatchEvent(new Event('change',{bubbles:true}))}`);
+const open = async () => { await click('/knowledge'); await wait('document.querySelector(".knowledge-workspace")'); };
+const article = '[data-knowledge-source]';
+const sourceAction = text => evaluate(`{const e=[...document.querySelectorAll('[data-knowledge-source]')].find(e=>e.textContent.includes('Browser RAG upload'));const b=[...e.querySelectorAll('button')].find(b=>b.textContent.trim()===${JSON.stringify(text)});if(!b)throw new Error('Missing source action');b.click()}`);
+const check = (name, passed) => { checks.push({ name, passed }); assert.ok(passed, name); };
+const file = path.resolve('artifacts/internal-rag-ui.md');
+await mkdir('artifacts/ui-rag', { recursive: true });
+await writeFile(file, 'INTERNAL UI TEST ONLY. Nebularmigration requires a CSV export and training. This fixture is not real customer research or an AI result.');
+try {
+  await send('Page.enable'); await send('Runtime.enable'); await send('DOM.enable');
+  await send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] });
+  await send('Page.navigate', { url: base }); await wait('document.readyState==="complete"');
+  await evaluate(`localStorage.setItem('quorum-projects-v2',${JSON.stringify(JSON.stringify([fixture.context]))});localStorage.setItem('quorum-active-v2',${JSON.stringify(fixture.context.sessionId)})`);
+  await send('Page.reload'); await wait('document.querySelector(".hero-actions")'); await click('Start your Quorum'); await wait('document.querySelector(".terminal-panel")'); await evaluate(`{const select=document.querySelector('.app-nav select');select.value=${JSON.stringify(fixture.context.sessionId)};select.dispatchEvent(new Event('change',{bubbles:true}))}`); await open();
+  for (const width of [1440, 1024, 768, 390, 320]) {
+    await send('Emulation.setDeviceMetricsOverride', { width, height: 950, deviceScaleFactor: 1, mobile: width < 600 });
+    await evaluate('document.querySelectorAll(".knowledge-workspace details").forEach(e=>e.open=true)');
+    const layout = await evaluate('({width:innerWidth,overflow:document.documentElement.scrollWidth-innerWidth})'); layouts.push(layout); assert.ok(layout.overflow <= 1);
+    await evaluate('window.scrollTo(0,0)'); const shot = await send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: true }); await writeFile(`artifacts/ui-rag/knowledge-expanded-${width}.png`, Buffer.from(shot.data, 'base64'));
+  }
+  await send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 950, deviceScaleFactor: 1, mobile: false });
+  await type('.knowledge-import-form [name=title]', 'Browser RAG upload');
+  await type('.knowledge-import-form [name=publisher]', 'Internal QA');
+  await type('.knowledge-import-form [name=limitations]', 'Static fixture only; no real customer evidence.');
+  await evaluate(`document.querySelector('.knowledge-import-form [name=consent]').click()`);
+  const document = await send('DOM.getDocument'), input = await send('DOM.querySelector', { nodeId: document.root.nodeId, selector: '.knowledge-import-form input[type=file]' });
+  await send('DOM.setFileInputFiles', { nodeId: input.nodeId, files: [file] });
+  await wait('document.querySelector(".knowledge-import-form [name=content]").value.includes("Nebularmigration")');
+  await click('Import source'); await wait('document.querySelector(".knowledge-workspace").textContent.includes("Browser RAG upload")&&!document.querySelector(".workspace-feedback").textContent.includes("Processing")');
+  check('TXT/Markdown upload imports source text through the UI and stores it on the server', await evaluate(`!![...document.querySelectorAll('${article}')].find(e=>e.textContent.includes('Browser RAG upload'))`));
+  await type('.knowledge-ask-form [name=question]', 'Nebularmigration');
+  await wait('document.querySelector(".knowledge-ask-form .knowledge-passage")');
+  check('live retrieval preview ranks the uploaded document', await evaluate('document.querySelector(".knowledge-ask-form .knowledge-passage summary").textContent.includes("Browser RAG upload")'));
+  await sourceAction('Pause source'); await wait(`!![...document.querySelectorAll('${article}')].find(e=>e.textContent.includes('Browser RAG upload')&&e.textContent.includes('PAUSED'))`);
+  check('paused sources disappear from retrieval', await evaluate('!document.querySelector(".knowledge-ask-form .knowledge-passage")'));
+  await sourceAction('Enable source'); await wait('document.querySelector(".knowledge-ask-form .knowledge-passage")');
+  check('enabled sources return to retrieval', true);
+  await sourceAction('Edit source'); await wait('document.querySelector(".knowledge-import-form h2").textContent==="Update source"');
+  check('source editor receives keyboard focus', await evaluate('document.activeElement===document.querySelector(".knowledge-import-form [name=title]")'));
+  await type('.knowledge-import-form [name=content]', 'INTERNAL UI TEST ONLY. Nebularmigration needs a CSV export and training. Edited signaturev2 is a static QA fixture, not customer evidence.');
+  await evaluate('document.querySelector(".knowledge-import-form [name=consent]").click()'); await click('Save updated source');
+  await wait('document.querySelector(".knowledge-import-form h2").textContent==="Add a document or website"');
+  await send('Page.reload'); await wait('document.querySelector(".hero-actions")'); await click('Start your Quorum'); await wait('document.querySelector(".terminal-panel")'); await evaluate(`{const select=document.querySelector('.app-nav select');select.value=${JSON.stringify(fixture.context.sessionId)};select.dispatchEvent(new Event('change',{bubbles:true}))}`); await open();
+  check('edited source and version survive a browser reload', await evaluate(`!![...document.querySelectorAll('${article}')].find(e=>e.textContent.includes('Browser RAG upload')&&e.textContent.includes('signaturev2'))`));
+  await type('.knowledge-ask-form [name=question]', 'quuxflarb unobtainium'); await click('Ask with cited passages');
+  await wait('document.querySelector(".workspace-feedback").textContent.includes("No matching sources")');
+  check('a question without matching sources abstains without inference', await evaluate(`document.querySelector('[aria-label="Source-grounded answer"]').textContent.includes('More source material needed')`));
+  await sourceAction('Delete source'); await wait(`![...document.querySelectorAll('${article}')].some(e=>e.textContent.includes('Browser RAG upload'))`);
+  check('deleting the imported document removes it from the library', true);
+  await choose('.knowledge-import-form select', 'url'); await wait('!document.querySelector(".knowledge-import-form [name=content]")');
+  check('URL import requests extraction rather than accepting a bookmark as document text', await evaluate('document.querySelector(".knowledge-import-form [name=url]").required&&document.querySelector(".knowledge-import-form").textContent.includes("Tavily")'));
+  assert.deepEqual(errors, []);
+  const report = { checks, layouts, browserExceptions: errors }; await writeFile('artifacts/ui-rag/report.json', JSON.stringify(report, null, 2)); console.log(JSON.stringify(report, null, 2));
+} finally {
+  await fixture.cleanup(); await unlink(file).catch(() => {});
+  await evaluate("localStorage.removeItem('quorum-projects-v2');localStorage.removeItem('quorum-active-v2')").catch(() => {}); socket.close();
+}
