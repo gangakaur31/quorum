@@ -1,0 +1,68 @@
+# Dependencies and generated web output
+node_modules/
+/.next/
+/out/
+/dist/
+/build/
+/coverage/
+/.turbo/
+/.cache/
+*.tsbuildinfo
+/next-env.d.ts
+
+# Every environment file, including the local setup example requested for exclusion.
+# README.md contains the complete public configuration template.
+.env
+.env.*
+/.env.example
+*.local
+
+# Private runtime data, captures, browser profiles and verification output
+/.quorum-data/
+/.browser-check/
+/artifacts/
+*.log
+*.pid
+*.pid.lock
+
+# Local coding-agent instructions and working notes
+AGENTS.md
+agents.md
+CLAUDE.md
+claude.md
+/.agents/
+/.codex/
+/.claude/
+/context.md
+/TODO.md
+/Animation Components.txt
+/Quorum-Project-Overview.docx
+/Project Overview.*
+
+# Legacy Python workspace; the web application lives in app/, components/ and lib/.
+/src/
+/.python-version
+/pyproject.toml
+/uv.lock
+/.venv/
+/venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Superseded generated diagram and its authoring prompt
+/docs/assets/quorum-feature-flowchart.png
+/docs/assets/quorum-feature-flowchart.prompt.md
+
+# Deployment-local state and editor/operating-system files
+/.vercel/
+/.vscode/
+/.idea/
+.DS_Store
+Thumbs.db
+Desktop.ini
+*.swp
+*.swo
+*~
