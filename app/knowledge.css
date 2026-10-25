@@ -1,0 +1,14 @@
+.knowledge-workspace .knowledge-feature-fields{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 16px}
+.knowledge-workspace input[type=file]{max-width:100%;padding:10px;font-size:12px}
+.knowledge-original{max-height:360px;overflow:auto;padding:16px;background:#f1f5ed;border-radius:4px}
+.knowledge-tag{display:block;margin-top:5px;color:#61705b;font:11px/1.6 var(--font-mono)}
+.knowledge-passage summary{line-height:1.6;overflow-wrap:anywhere}
+.knowledge-passage blockquote{max-height:320px;overflow:auto}
+.grounding-panel{margin-top:24px}
+.grounding-panel>details>summary{line-height:1.7;cursor:pointer;font-size:13px;font-weight:650}
+.grounding-panel details:not([open])>:not(summary),.knowledge-workspace details:not([open])>:not(summary){display:none}
+.grounding-panel details,.grounding-panel details>*{min-width:0;max-width:100%;overflow-wrap:anywhere}
+.knowledge-workspace .workspace-actions{margin-top:14px}
+.knowledge-workspace fieldset .checkbox-label{font-size:12px;align-items:center}
+.knowledge-workspace fieldset .checkbox-label input{margin-top:0}
+@container(max-width:400px){.knowledge-workspace .knowledge-feature-fields{grid-template-columns:1fr}}

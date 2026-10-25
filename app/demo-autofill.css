@@ -1,0 +1,16 @@
+/* One small, command-local draft helper. Execution remains the primary action. */
+.demo-record-label { display: inline-block; padding: 7px 10px; border: 1px solid #c7ac73; border-radius: 5px; background: #fbf3de; color: #70521d; font: 600 11px/1.6 var(--font-sans); }
+.demo-rehearsal { margin: 20px 0; padding: 18px; border: 1px solid #c7ac73; border-radius: 8px; background: #fcf7e9; color: #40361e; }
+.demo-autofill { margin: 0 0 16px; padding: 0 0 12px; border-bottom: 1px solid #65855430; }
+.demo-autofill-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.demo-autofill .demo-autofill-button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 36px; padding: 8px 11px; width: auto; border: 1px solid #9fb98c; border-radius: 5px; background: #eff6e8; color: #365a29; font: 600 12px/1.4 var(--font-sans); cursor: pointer; }
+.demo-autofill .demo-autofill-button:hover:not(:disabled) { background: #e3f0d6; border-color: #71965a; }
+.demo-autofill-button svg { width: 15px; height: 15px; flex-shrink: 0; }
+.demo-autofill .demo-undo { width: auto; min-height: 36px; padding: 6px 3px; border: 0; background: transparent; color: #58704d; font: 12px var(--font-sans); text-decoration: underline; cursor: pointer; }
+.demo-autofill > p { margin: 9px 0 0; max-width: 75ch; color: #586d4e; font: 12px/1.65 var(--font-sans); }
+.terminal-panel .demo-autofill { margin-top: 14px; border-color: #40583e; }
+.terminal-panel .demo-autofill .demo-autofill-button { background: #15251b; border-color: #4e7040; color: #c3efa9; }
+.terminal-panel .demo-autofill .demo-autofill-button:hover:not(:disabled) { background: #203823; border-color: #8cbb70; }
+.terminal-panel .demo-autofill .demo-undo, .terminal-panel .demo-autofill > p { color: #a9bd9e; }
+.demo-autofill button:disabled { opacity: .5; cursor: not-allowed; }
+@media (max-width: 600px) { .demo-autofill .demo-autofill-button, .demo-autofill .demo-undo { min-height: 42px; } }
